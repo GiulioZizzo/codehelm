@@ -1,0 +1,13 @@
+# Local Ollama server via LiteLLM: ollama pull hf.co/Qiskit/mistral-small-3.2-24b-qiskit-GGUF:latest
+orchestration:
+  type: codehelm.orchestration.mellea.MelleaConnector
+model:
+  type: codehelm.models.litellm.LiteLLMModel
+  model_config:
+    model_id: ollama/hf.co/Qiskit/mistral-small-3.2-24b-qiskit-GGUF:latest
+    base_url: http://localhost:11434
+num_samples: 3
+dataset_url: "https://raw.githubusercontent.com/qiskit-community/qiskit-human-eval/main/dataset/dataset_qiskit_test_human_eval.json"
+result_path: "results"
+test_format: "human_eval"
+verbose: True

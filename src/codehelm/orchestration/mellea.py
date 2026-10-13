@@ -5,12 +5,38 @@ from typing import Annotated, Any, Literal
 import jsonlines
 from mellea import MelleaSession
 from mellea.backends import ModelOption
-from mellea.core import Requirement
+from mellea.core import Requirement, ValidationResult
 from mellea.stdlib.context import SimpleContext
 from pydantic import Field
 from tqdm import tqdm
 
-from codehelm.algorithms.entropy.mellea_strategy import MelleaEntropyStrategy
+from codehelm.algorithms.validator_feedback.mellea_strategy import (
+    MelleaFeedbackStrategy,
+)
+
+# The entropy algorithm (codehelm.algorithms.entropy) is not included in this repository,
+# so MelleaEntropyStrategy is imported only if available and its code paths are skipped otherwise.
+try:
+    from codehelm.algorithms.entropy.mellea_strategy import MelleaEntropyStrategy
+except ImportError:
+    MelleaEntropyStrategy = None
+
+
+def _is_entropy_strategy(strategy):
+    return MelleaEntropyStrategy is not None and isinstance(strategy, MelleaEntropyStrategy)
+
+
+def _to_mellea_validation_fn(codehelm_validate_fn):
+    """Wrap a codehelm validate(ctx) -> (passed, failure_info) into a Mellea validation_fn.
+    """
+
+    def _validation_fn(ctx):
+        passed, failure_info = codehelm_validate_fn(ctx)
+        if isinstance(failure_info, list):
+            failure_info = "\n".join(failure_info)
+        return ValidationResult(passed is True, reason=failure_info or "")
+
+    return _validation_fn
 
 
 class MelleaRunnerConfig:
@@ -50,8 +76,11 @@ class MelleaRunner:
         elif config["model"]["type"] == "codehelm.models.litellm.LiteLLMModel":
             from mellea.backends.litellm import LiteLLMBackend
 
+            model_config = config["model"]["model_config"]
+            # Configs use either base_url (Mellea's name) or api_base (LiteLLM's name)
             m_backend = LiteLLMBackend(
-                model_id=config["model"]["model_config"]["model_id"], base_url=config["model"]["model_config"]["base_url"]
+                model_id=model_config["model_id"],
+                base_url=model_config.get("base_url") or model_config.get("api_base"),
             )
         else:
             raise ValueError(f"Unkown backend_type: either huggingface_backend or litellm_backend. Got {config['model']['type']}")
@@ -62,9 +91,9 @@ class MelleaRunner:
         self.test_format = config["test_format"]
 
         self.max_new_tokens = 4000
+        self.repair_strategy = repair_strategy
         if repair_strategy:
-            self.repair_strategy = repair_strategy
-            if isinstance(repair_strategy, MelleaEntropyStrategy):
+            if _is_entropy_strategy(repair_strategy):
                 model_obj = getattr(m_backend, "model", getattr(m_backend, "_model", None))
                 tokenizer_obj = getattr(m_backend, "tokenizer", getattr(m_backend, "_tokenizer", None))
                 if model_obj is None or tokenizer_obj is None:
@@ -142,8 +171,14 @@ class MelleaRunner:
 
             model_options = {ModelOption.MAX_NEW_TOKENS: self.max_new_tokens} if self.max_new_tokens is not None else None
 
+            # Wire feedback strategy for this sample, so its repair() feeds the
+            # validator failures (tests, LintQ) back to the model with the prompt.
+            if isinstance(self.repair_strategy, MelleaFeedbackStrategy):
+                self.repair_strategy._current_prompt = prompt
+                MelleaFeedbackStrategy.set_active(self.repair_strategy)
+
             # Wire entropy strategy for this sample if present.
-            if isinstance(self.repair_strategy, MelleaEntropyStrategy):
+            if _is_entropy_strategy(self.repair_strategy):
                 entropy_strategy = self.repair_strategy
                 entropy_strategy._entropy.setup(sample_dir=sample_dir)
                 entropy_strategy._current_prompt = prompt
@@ -152,7 +187,7 @@ class MelleaRunner:
                 validation_fn = entropy_strategy.make_validation_fn(self.validator.validate)
                 active_strategy = entropy_strategy
             else:
-                validation_fn = self.validator.validate
+                validation_fn = _to_mellea_validation_fn(self.validator.validate)
                 active_strategy = self.repair_strategy
 
             requirement = Requirement("Must pass tests.", validation_fn=validation_fn)
@@ -164,7 +199,9 @@ class MelleaRunner:
             )
 
             # Clean up active instance for this sample.
-            if isinstance(self.repair_strategy, MelleaEntropyStrategy):
+            if isinstance(self.repair_strategy, MelleaFeedbackStrategy):
+                MelleaFeedbackStrategy.set_active(None)
+            if _is_entropy_strategy(self.repair_strategy):
                 MelleaEntropyStrategy.set_active(None)
 
         return str(result)
