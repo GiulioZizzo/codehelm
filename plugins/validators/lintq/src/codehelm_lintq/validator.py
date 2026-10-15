@@ -1,10 +1,7 @@
 """
 LintQ validator: the code must pass a correctness validator, then LintQ.
 
-To install LintQ:
-git clone --depth 1 https://github.com/sola-st/LintQ.git
-(cd LintQ/qlint/codeql/src && codeql pack install)
-export LINTQ_DIR="$(pwd)/LintQ"
+CodeQL and LintQ are downloaded on first use (see install.py).
 """
 
 import json
@@ -16,11 +13,12 @@ from pathlib import Path
 from codehelm.utils.utils import extract_code_from_llm_response
 from codehelm.validator.validator_base import BaseValidator
 from codehelm.validator.validator_exec import ValidatorExec
+from codehelm_lintq.install import codeql, lintq_dir
 
 
 def run_lintq(code: str) -> list[str]:
     """Run the LintQ queries over code; return one [rule-id] message per finding."""
-    lintq = os.environ["LINTQ_DIR"]
+    lintq = lintq_dir()
     with tempfile.TemporaryDirectory() as tmp:
         os.makedirs(f"{tmp}/src")
         Path(f"{tmp}/src/candidate.py").write_text(code)
@@ -36,7 +34,7 @@ def run_lintq(code: str) -> list[str]:
                 f"--additional-packs={lintq}/qlint/codeql/src:{lintq}/qlint/codeql/lib",
             ],
         ):
-            subprocess.run(["codeql", *cmd], check=True, capture_output=True)
+            subprocess.run([codeql(), *cmd], check=True, capture_output=True)
         with open(f"{tmp}/out.sarif") as f:
             results = [r for run in json.load(f)["runs"] for r in run["results"]]
     return [f"[{r['ruleId']}] {r['message']['text']}" for r in results]

@@ -2,24 +2,25 @@
 or maximum budget is reached.
 
 Downloads Qiskit HumanEval and runs the first num_samples problems of config.yaml
-(see README.md for the LintQ setup):
+(see README.md for the setup):
 
     python examples/mellea_lintq/run.py
 """
 
 import json
 import os
-import urllib.request
 from pathlib import Path
 
 import yaml
+from codehelm_lintq import ValidatorLintQ
 
 from codehelm.algorithms.validator_feedback.feeback import Feedback
-from codehelm.algorithms.validator_feedback.mellea_strategy import MelleaFeedbackStrategy
+from codehelm.algorithms.validator_feedback.mellea_strategy import (
+    MelleaFeedbackStrategy,
+)
 from codehelm.orchestration.mellea import MelleaRunner
-from codehelm.utils.utils import resolve_env_vars, resolve_folder_savedir
+from codehelm.utils.utils import resolve_env_vars, resolve_folder_savedir, urlopen
 from codehelm.validator.validator_exec import ValidatorExec
-from codehelm.validator.validator_lintq import ValidatorLintQ
 
 HERE = Path(__file__).parent
 
@@ -31,7 +32,8 @@ results_dir = resolve_folder_savedir(str(HERE / config["result_path"]))
 os.makedirs(results_dir)
 
 # Download the dataset and keep the first num_samples problems, saved with the results
-with urllib.request.urlopen(config["dataset_url"], timeout=30) as response:
+# (urlopen uses certifi's CA bundle, avoiding certificate errors on some Python builds)
+with urlopen(config["dataset_url"]) as response:
     dataset = json.load(response)[: config["num_samples"]]
 dataset_path = os.path.join(results_dir, "dataset.json")
 with open(dataset_path, "w") as f:

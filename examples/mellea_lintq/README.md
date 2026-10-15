@@ -1,6 +1,6 @@
 # Correctness + LintQ with Mellea
 
-`ValidatorLintQ` (`src/codehelm/validator/validator_lintq.py`) wraps a correctness
+`ValidatorLintQ` (the `codehelm-lintq` plugin in `plugins/validators/lintq/`) wraps a correctness
 validator (default `ValidatorExec`): the code must first pass the problem's tests, then
 raise no [LintQ](https://github.com/sola-st/LintQ) warnings. Failures, LintQ findings
 included, are fed back to the model by the repair strategy. It is adapted from Mellea's
@@ -8,12 +8,11 @@ included, are fed back to the model by the repair strategy. It is adapted from M
 
 ## Setup
 
-LintQ needs the [CodeQL CLI](https://codeql.github.com/) on `PATH`:
+Install the LintQ plugin (from the repository root). CodeQL and LintQ are downloaded on
+first use, or ahead of time with `codehelm-lintq-install` (see `plugins/validators/lintq/README.md`):
 
 ```bash
-git clone --depth 1 https://github.com/sola-st/LintQ.git
-(cd LintQ/qlint/codeql/src && codeql pack install)
-export LINTQ_DIR="$(pwd)/LintQ"
+pip install -e plugins/validators/lintq
 ```
 
 `config.yaml` uses a local [Ollama](https://ollama.com/) server:
@@ -35,4 +34,4 @@ a `sample_N/` folder per problem with its `lintq_result.json` (`passed`, `tests_
 `lintq_findings`), and `summary.json` and `lintq_summary.json` collating them. `ValidatorExec` handles both
 Qiskit HumanEval (`check(candidate)`) and QuantumKatas (`test_<entry_point>()`) tests.
 
-The same setup is tested end to end in `tests/test_lintq.py`.
+The same setup is tested end to end in `plugins/validators/lintq/tests/test_lintq.py`.

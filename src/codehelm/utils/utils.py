@@ -23,6 +23,24 @@ def resolve_env_vars(config: dict) -> dict:
     return config
 
 
+def urlopen(url, timeout=30):
+    """``urllib.request.urlopen`` using certifi's CA bundle when it is installed.
+
+    Some Python builds (e.g. python.org on macOS) ship without CA certificates, so
+    HTTPS downloads fail with ``CERTIFICATE_VERIFY_FAILED``.
+    """
+    import ssl
+    import urllib.request
+
+    try:
+        import certifi
+
+        context = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        context = ssl.create_default_context()
+    return urllib.request.urlopen(url, timeout=timeout, context=context)
+
+
 def resolve_folder_savedir(default_results_prefix="results"):
     """
     Resolve a unique directory name by checking if the default exists.

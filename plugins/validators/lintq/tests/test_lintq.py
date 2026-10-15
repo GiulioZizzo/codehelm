@@ -1,24 +1,22 @@
-"""Tests for correctness + LintQ validation.
+"""Tests for the LintQ validator plugin, run from the repository root.
 
 The first tests run offline; the last ones run the whole Mellea pipeline with a real LLM.
-LintQ tests are skipped unless codeql is on PATH and LINTQ_DIR is set.
+LintQ tests are skipped until CodeQL and LintQ are installed (codehelm-lintq-install).
 """
 
 import json
 import os
-import shutil
-import threading
 import urllib.request
 from pathlib import Path
 
 import pytest
 import yaml
+from codehelm_lintq import ValidatorLintQ
+from codehelm_lintq.install import is_installed
 
 from codehelm.algorithms.validator_feedback.feeback import Feedback
 from codehelm.utils.utils import resolve_env_vars
-from codehelm.validator import validator_exec
 from codehelm.validator.validator_exec import ValidatorExec
-from codehelm.validator.validator_lintq import ValidatorLintQ
 
 
 def _ollama_available():
@@ -32,8 +30,8 @@ def _ollama_available():
 
 # Reusable skip markers
 requires_lintq = pytest.mark.skipif(
-    shutil.which("codeql") is None or "LINTQ_DIR" not in os.environ,
-    reason="LintQ needs the codeql CLI and LINTQ_DIR (see validator_lintq.py).",
+    not is_installed(),
+    reason="CodeQL and LintQ are not installed yet: run codehelm-lintq-install.",
 )
 requires_ollama = pytest.mark.skipif(
     not _ollama_available(),
@@ -80,37 +78,6 @@ def _setup(validator, tmp_path, test=CHECK, entry_point="bell", prompt="Write be
     return validator
 
 
-def test_exec_quantumkatas_format(tmp_path):
-    """QuantumKatas tests are a test_<entry_point>() function instead of check()."""
-    v = _setup(ValidatorExec(), tmp_path, test="def test_add():\n    assert add(1, 2) == 3\n", entry_point="add")
-    # check() is missing, so test_add() runs and passes
-    assert v.validate("def add(a, b):\n    return a + b") == (True, None)
-
-
-def test_exec_prepends_code_stub_prompt(tmp_path):
-    """A code-stub prompt (imports + signature) is prepended to the completion."""
-    v = _setup(ValidatorExec(), tmp_path, prompt="from qiskit import QuantumCircuit\n")
-    passed, _ = v.validate("def bell():\n    return QuantumCircuit(2)")
-    # the stub's import makes QuantumCircuit available to the completion
-    assert passed is True
-
-
-def test_exec_timeout_off_main_thread(tmp_path, monkeypatch):
-    """Mellea validates on a worker thread, where SIGALRM is unavailable."""
-    monkeypatch.setattr(validator_exec, "EXECUTION_TIMEOUT_SECONDS", 1)
-    v = _setup(ValidatorExec(), tmp_path)
-    out = {}
-    worker = threading.Thread(target=lambda: out.update(r=v.validate("while True:\n    pass")))
-    worker.start()
-    worker.join(timeout=10)
-    # the infinite loop was interrupted instead of hanging the thread
-    assert not worker.is_alive()
-    # reported as a failed timeout
-    assert out["r"][0] is False and "timeout" in out["r"][1]
-    # the result file is written on timeout too (get_summary needs it)
-    assert json.loads((tmp_path / "sample_0" / "validator_result.json").read_text()) == {"passed": False}
-
-
 def test_lintq_skipped_when_tests_fail(tmp_path):
     """LintQ is not run on code that fails the tests (so this runs without codeql)."""
     v = _setup(ValidatorLintQ(), tmp_path)
@@ -135,18 +102,6 @@ def test_lintq_clean_and_buggy(tmp_path):
     summary = v.get_summary(tmp_path)
     # summary counts the last attempt: tests passed, flagged by LintQ, not passed
     assert summary == {"total": 1, "tests_passed": 1, "flagged_by_lintq": 1, "passed": 0}
-
-
-def test_mellea_validation_fn_wraps_tuple():
-    """codehelm (passed, info) tuples must become Mellea ValidationResults."""
-    pytest.importorskip("mellea")
-    from codehelm.orchestration.mellea import _to_mellea_validation_fn
-
-    failed = _to_mellea_validation_fn(lambda ctx: (False, ["a", "b"]))(None)
-    # a failed tuple becomes a falsy ValidationResult with the joined reason
-    assert not bool(failed) and failed.reason == "a\nb"
-    # a passed tuple becomes a truthy ValidationResult
-    assert bool(_to_mellea_validation_fn(lambda ctx: (True, None))(None))
 
 
 # --- End-to-end: MelleaRunner + LLM + correctness + LintQ ------------------------
