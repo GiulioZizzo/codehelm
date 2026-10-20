@@ -1,3 +1,4 @@
+import ctypes
 import json
 import logging
 import os
@@ -35,8 +36,9 @@ def timeout(seconds: int):
             result = expensive_computation()
 
     Note:
-        Only works on Unix-like systems (uses signal.SIGALRM).
-        Not available on Windows.
+        On the main thread of Unix-like systems uses signal.SIGALRM; elsewhere
+        (e.g. Mellea's worker thread) raises TimeoutError asynchronously in the
+        calling thread, which cannot interrupt a blocking C call.
     """
 
     is_main_thread = threading.current_thread() is threading.main_thread()
@@ -54,19 +56,34 @@ def timeout(seconds: int):
             signal.alarm(0)
             signal.signal(signal.SIGALRM, old_handler)
     else:
-        yield
+        # SIGALRM only works on the main thread, but Mellea runs validators on a
+        # worker thread: raise TimeoutError in this thread via the C API instead
+        # (same approach as Mellea's qiskit_code_validation example).
+        tid = ctypes.c_ulong(threading.get_ident())
+        timer = threading.Timer(
+            seconds,
+            ctypes.pythonapi.PyThreadState_SetAsyncExc,
+            (tid, ctypes.py_object(TimeoutError)),
+        )
+        timer.start()
+        try:
+            yield
+        finally:
+            timer.cancel()
 
 class ValidatorExec(BaseValidator):
     def __init__(self):
         self.sample_num = None
         self.test = None
         self.entry_point = None
+        self.prompt = None
 
     def setup(self, *, sample_dir, sample_num, test, entry_point, prompt=None, **kwargs):
         self._base_sample_dir = Path(sample_dir)
         self.sample_num = sample_num
         self.test = test
         self.entry_point = entry_point
+        self.prompt = prompt
         self._attempt = 0
         os.makedirs(sample_dir, exist_ok=True)
 
@@ -104,8 +121,13 @@ class ValidatorExec(BaseValidator):
         code = extract_code_from_llm_response(raw)
 
         try:
-            # Create executable code by combining prompt, solution, and test
-            code = code + "\n" + self.test
+            # Create executable code by combining prompt, solution, and test.
+            # Code-stub prompts (Qiskit HumanEval) are prepended as in the original harness;
+            # natural-language prompts (Qiskit HumanEval hard) are not.
+            is_stub = (self.prompt or "").lstrip().startswith(("from ", "import ", "def "))
+            code = (self.prompt if is_stub else "") + "\n" + code + "\n" + self.test
+            # Non-interactive matplotlib: GUI backends fail off the main thread.
+            os.environ.setdefault("MPLBACKEND", "Agg")
             Path(os.path.join(active_dir, "code.py")).write_text(code)
 
             # ⚠️  SECURITY WARNING: exec() Execution
@@ -164,9 +186,15 @@ class ValidatorExec(BaseValidator):
 
             if entry_point not in namespace:
                 logger.warning(f'Entry point "{entry_point}" not found in namespace')
+                with open(self._base_sample_dir / "validator_result.json", "w") as f:
+                    json.dump({"passed": False}, f, indent=4)
                 return False, f'Entry point "{entry_point}" not defined'
 
-            namespace["check"](namespace[entry_point])
+            # Qiskit HumanEval tests define check(candidate); QuantumKatas define test_<entry_point>()
+            if "check" in namespace:
+                namespace["check"](namespace[entry_point])
+            else:
+                namespace[f"test_{entry_point}"]()
             logger.info("✓ passed")
 
             summary = {
@@ -178,6 +206,8 @@ class ValidatorExec(BaseValidator):
             return True, None
 
         except TimeoutError as e:
+            with open(self._base_sample_dir / "validator_result.json", "w") as f:
+                json.dump({"passed": False}, f, indent=4)
             logger.error(f"✗ timed out: {e}")
             return False, f"Execution timeout: {e}"
         except AssertionError as e:

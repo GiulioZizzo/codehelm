@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codehelm-lintq"
+version = "0.1.0"
+description = "codehelm validator plugin: LintQ static analysis of Qiskit code"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["codehelm", "validator", "LintQ", "Qiskit"]
+# codehelm itself is not listed: it is not on PyPI, so install it first (see README.md).
+# CodeQL and LintQ are not Python packages: they are downloaded on first use (install.py).
+dependencies = [
+    "certifi",
+    "qiskit",
+    "mellea"
+]
+
+[project.scripts]
+codehelm-lintq-install = "codehelm_lintq.install:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
