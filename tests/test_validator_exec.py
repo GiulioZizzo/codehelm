@@ -1,3 +1,8 @@
+#
+# Copyright IBM Corp. 2026 - 2026
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Tests for the correctness validator (ValidatorExec) and its use from Mellea (no LLM needed).
 
 The LintQ validator is tested in its plugin: plugins/validators/lintq/tests.

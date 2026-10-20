@@ -1,3 +1,8 @@
+#
+# Copyright IBM Corp. 2026 - 2026
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """
 LintQ validator: the code must pass a correctness validator, then LintQ.
 

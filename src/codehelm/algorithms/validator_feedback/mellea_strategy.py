@@ -1,3 +1,8 @@
+#
+# Copyright IBM Corp. 2026 - 2026
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Mellea sampling strategy for validator feedback-guided generation.
 
 :class:`MelleaFeedbackStrategy` bridges :class:`~codehelm.algorithms.validator_feedback.feeback.Feedback`

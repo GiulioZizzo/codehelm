@@ -1,6 +1,12 @@
+#
+# Copyright IBM Corp. 2026 - 2026
+# SPDX-License-Identifier: Apache-2.0
+#
+
 import os
 import yaml
 import pytest
+import litellm
 
 from codehelm.orchestration.base import BaseRunner
 
@@ -8,6 +14,8 @@ from codehelm.utils.utils import resolve_env_vars
 from codehelm.algorithms.validator_feedback.feeback import Feedback
 from codehelm.validator.validator_exec import ValidatorExec
 from codehelm.validator.validator_unittest import ValidatorUnitTest
+
+os.environ['LITELLM_LOG'] = 'DEBUG'
 
 @pytest.mark.parametrize("validator", [ValidatorExec(), ValidatorUnitTest()])
 def test_litellm(validator):

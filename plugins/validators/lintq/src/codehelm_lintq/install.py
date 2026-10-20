@@ -1,3 +1,8 @@
+#
+# Copyright IBM Corp. 2026 - 2026
+# SPDX-License-Identifier: Apache-2.0
+#
+
 """Download CodeQL and LintQ on first use, so LintQ needs no manual setup.
 
 Both are cached in ``CODEHELM_LINTQ_HOME`` (default ``~/.cache/codehelm-lintq``).

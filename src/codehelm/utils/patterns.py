@@ -1,3 +1,8 @@
+#
+# Copyright IBM Corp. 2026 - 2026
+# SPDX-License-Identifier: Apache-2.0
+#
+
 # Cross-checked against:
 # https://docs.quantum.ibm.com/migration-guides/qiskit-1.0
 # https://docs.quantum.ibm.com/migration-guides/qiskit-2.0
