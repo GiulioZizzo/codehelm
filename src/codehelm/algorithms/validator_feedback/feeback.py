@@ -15,7 +15,7 @@ class Feedback:
     def __init__(self):
         self.requires_model = False
 
-    def setup(self, sample_dir):
+    def setup(self, sample_dir, **kwargs):
         self._attempt = 0
     
     def repair(self, prompt: str, failure_info: str) -> str:

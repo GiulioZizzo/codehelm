@@ -6,10 +6,18 @@
 import importlib
 import json
 import os
+from dataclasses import dataclass
 
 import jsonlines
 import yaml
 from tqdm import tqdm
+
+
+@dataclass
+class FinalResponse:
+    """Returned by a repair strategy that already produced its answer (e.g. via its own
+    search). The runner validates ``text`` directly instead of sending it back to the model."""
+    text: str
 
 
 class BaseRunner:
@@ -99,7 +107,12 @@ class BaseRunner:
                 entry_point=entry_point,
                 prompt=prompt,
             )
-            self.repair_strategy.setup(sample_dir=sample_dir)
+            self.repair_strategy.setup(
+                sample_dir=sample_dir,
+                test=test,
+                entry_point=entry_point,
+                prompt=prompt,
+            )
 
             # prepend imports to steer model if needed: prompt + "\n```python\n" + obj["imports"]
             raw = self.model.generate(prompt, verbose=self.verbose)
@@ -113,6 +126,10 @@ class BaseRunner:
                     repair_result = self.repair_strategy.repair(
                         prompt, "\n".join(failure_info)
                     )
+                    # A strategy that already has its answer: validate it, no model call.
+                    if isinstance(repair_result, FinalResponse):
+                        passed, failure_info = self.validator.validate(repair_result.text)
+                        continue
                     # Entropy.repair() returns an EntropyRepairResult; other
                     # strategies may return a plain string prompt.
                     if hasattr(repair_result, "prompt_for_model") and hasattr(repair_result, "response_prefix"):
